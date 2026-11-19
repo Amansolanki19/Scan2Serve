@@ -84,8 +84,22 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/api/users/register",
                                 "/api/user/register",
-                                "/api/auth/**"
+                                "/api/auth/**",
+                                "/api/public/menu/**"
                         ).permitAll()
+                        .requestMatchers("/api/restaurants/**")
+                        .hasAnyRole("RESTAURANT_ADMIN", "SUPER_ADMIN")
+                        .requestMatchers("/api/cart/**")
+                        .hasRole("CUSTOMER")
+                        .requestMatchers("/api/orders/restaurant/**")
+                        .hasAnyRole("RESTAURANT_ADMIN", "SUPER_ADMIN")
+                        .requestMatchers(
+                                "/api/orders/my",
+                                "/api/orders/my/page",
+                                "/api/orders/checkout",
+                                "/api/orders/*"
+                        )
+                        .hasRole("CUSTOMER")
                         .anyRequest().authenticated()
                 )
 

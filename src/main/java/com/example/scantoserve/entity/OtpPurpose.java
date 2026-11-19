@@ -2,5 +2,6 @@ package com.example.scantoserve.entity;
 
 public enum OtpPurpose {
     LOGIN,
-    REGISTER
+    REGISTER,
+    PASSWORD_RESET
 }

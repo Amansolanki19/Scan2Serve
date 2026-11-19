@@ -46,6 +46,14 @@ public class GlobalExceptionHandler  {
                 .body(ApiResponse.error("Invalid or expired OTP", null));
     }
 
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidRefreshToken(
+            InvalidRefreshTokenException ex) {
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Invalid or expired refresh token", null));
+    }
+
     @ExceptionHandler(TooManyRequestException.class)
     public ResponseEntity<ApiResponse<Void>> handleTooManyRequests(
             TooManyRequestException ex) {
@@ -71,6 +79,19 @@ public class GlobalExceptionHandler  {
                 .body(ApiResponse.error(
                         "Validation failed",
                         errors
+                ));
+    }
+
+    @ExceptionHandler(
+            org.springframework.security.access.AccessDeniedException.class
+    )
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(
+            org.springframework.security.access.AccessDeniedException ex) {
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(
+                        "You are not authorized to perform this action",
+                        null
                 ));
     }
 
