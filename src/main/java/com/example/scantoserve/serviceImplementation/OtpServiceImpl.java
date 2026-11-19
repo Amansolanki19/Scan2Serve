@@ -1,15 +1,16 @@
 package com.example.scantoserve.serviceImplementation;
 
 import com.example.scantoserve.dto.LoginResponseDto;
+import com.example.scantoserve.dto.PasswordResetRequestDto;
 import com.example.scantoserve.dto.SendOtpRequestDto;
 import com.example.scantoserve.dto.VerifyOtpRequestDto;
 import com.example.scantoserve.entity.OtpPurpose;
 import com.example.scantoserve.entity.OtpVerification;
+import com.example.scantoserve.entity.User;
 import com.example.scantoserve.exception.InvalidOtpException;
 import com.example.scantoserve.repository.OtpVerificationRepo;
 import com.example.scantoserve.repository.UserRepo;
 import com.example.scantoserve.service.EmailService;
-import com.example.scantoserve.service.JwtService;
 import com.example.scantoserve.service.OtpService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,7 +32,7 @@ public class OtpServiceImpl implements OtpService {
     private final UserRepo userRepo;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-    private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
     private final CustomUserDetailsService customUserDetailsService;
 
     private final SecureRandom secureRandom =  new SecureRandom();
@@ -45,47 +46,69 @@ public class OtpServiceImpl implements OtpService {
     @Value("${otp.resend-cooldown-seconds:60}")
     private long resendCooldownSeconds;
 
-    @Value("${jwt.expiration}")
-    private long jwtExpiration;
-
-
     @Override
     @Transactional
     public void sendLoginOtp(SendOtpRequestDto request) {
+        sendOtp(request.email(), OtpPurpose.LOGIN);
+    }
 
+    @Override
+    @Transactional
+    public void sendPasswordResetOtp(SendOtpRequestDto request) {
+        sendOtp(request.email(), OtpPurpose.PASSWORD_RESET);
+    }
+
+    @Override
+    @Transactional(noRollbackFor = InvalidOtpException.class)
+    public LoginResponseDto verifyLoginOtp(VerifyOtpRequestDto request) {
         String email = normalizeEmail(request.email());
+        consumeOtp(email, request.otp(), OtpPurpose.LOGIN);
 
-        if(!userRepo.existsByEmail(email)){return;}
+        UserDetails userDetails =
+                customUserDetailsService.loadUserByUsername(email);
 
-        LocalDateTime now = LocalDateTime.now();
-        var existingOtp = otpVerificationRepo.findTopByEmailAndPurposeOrderByCreatedAtDesc(
-                email,
-                OtpPurpose.LOGIN
-        );
-
-        if(existingOtp.isPresent()){
-            OtpVerification previous = existingOtp.get();
-
-            if (previous.getCreatedAt().plusSeconds(
-                    resendCooldownSeconds
-            ).isAfter(now)) {
-                return;
-            }
+        if (!userDetails.isEnabled()) {
+            throw new InvalidOtpException("Invalid or expired OTP");
         }
 
-        otpVerificationRepo.deleteByEmailAndPurpose(
-                email, OtpPurpose.LOGIN
-        );
+        return refreshTokenService.issue(userDetails);
+    }
 
-        String otp = String.format(
-                "%06d",
-                secureRandom.nextInt(1_000_000)
-        );
+    @Override
+    @Transactional(noRollbackFor = InvalidOtpException.class)
+    public void resetPassword(PasswordResetRequestDto request) {
+        String email = normalizeEmail(request.email());
+        consumeOtp(email, request.otp(), OtpPurpose.PASSWORD_RESET);
 
+        User user = userRepo.findByEmail(email)
+                .orElseThrow(() -> new InvalidOtpException("Invalid or expired OTP"));
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepo.save(user);
+        refreshTokenService.revokeAllForUser(user.getId());
+    }
+
+    private void sendOtp(String rawEmail, OtpPurpose purpose) {
+        String email = normalizeEmail(rawEmail);
+        if (!userRepo.existsByEmail(email)) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        var existingOtp = otpVerificationRepo
+                .findTopByEmailAndPurposeOrderByCreatedAtDesc(email, purpose);
+
+        if (existingOtp.isPresent()
+                && existingOtp.get().getCreatedAt()
+                .plusSeconds(resendCooldownSeconds).isAfter(now)) {
+            return;
+        }
+
+        otpVerificationRepo.deleteByEmailAndPurpose(email, purpose);
+        String otp = String.format("%06d", secureRandom.nextInt(1_000_000));
         OtpVerification verification = OtpVerification.builder()
                 .email(email)
                 .otpHash(passwordEncoder.encode(otp))
-                .purpose(OtpPurpose.LOGIN)
+                .purpose(purpose)
                 .expiresAt(now.plusMinutes(expirationMinutes))
                 .attempts(0)
                 .verified(false)
@@ -94,72 +117,36 @@ public class OtpServiceImpl implements OtpService {
                 .build();
 
         otpVerificationRepo.save(verification);
-
         emailService.sendOtpEmail(email, otp, expirationMinutes);
-
     }
 
-    @Override
-    @Transactional(noRollbackFor = InvalidOtpException.class)
-    public LoginResponseDto verifyLoginOtp(VerifyOtpRequestDto request) {
-
-        String email = normalizeEmail(request.email());
-
+    private void consumeOtp(String email, String otp, OtpPurpose purpose) {
         OtpVerification verification = otpVerificationRepo
-                .findTopByEmailAndPurposeOrderByCreatedAtDesc(
-                        email, OtpPurpose.LOGIN
-                )
-                .orElseThrow(() ->
-                        new InvalidOtpException("Invalid or expired OTP")
-                );
-
+                .findTopByEmailAndPurposeOrderByCreatedAtDesc(email, purpose)
+                .orElseThrow(() -> new InvalidOtpException("Invalid or expired OTP"));
         LocalDateTime now = LocalDateTime.now();
 
         if (verification.isConsumed()
                 || verification.isVerified()
-                || !verification.getExpiresAt().isAfter(now)) {
-
+                || !verification.getExpiresAt().isAfter(now)
+                || verification.getAttempts() >= maxAttempts) {
+            verification.setConsumed(true);
+            otpVerificationRepo.save(verification);
             throw new InvalidOtpException("Invalid or expired OTP");
         }
 
-        if (verification.getAttempts() >= maxAttempts) {
-            verification.setConsumed(true);
-            otpVerificationRepo.save(verification);
-
-            throw new InvalidOtpException("Maximum OTP attempts exceeded");
-        }
-
-        if (!passwordEncoder.matches(
-                request.otp(), verification.getOtpHash())) {
-
-            verification.setAttempts(
-                    verification.getAttempts() + 1
-            );
-
+        if (!passwordEncoder.matches(otp, verification.getOtpHash())) {
+            verification.setAttempts(verification.getAttempts() + 1);
             if (verification.getAttempts() >= maxAttempts) {
                 verification.setConsumed(true);
             }
-
             otpVerificationRepo.save(verification);
-
             throw new InvalidOtpException("Invalid or expired OTP");
         }
 
         verification.setVerified(true);
         verification.setConsumed(true);
-
         otpVerificationRepo.save(verification);
-
-        UserDetails userDetails =
-                customUserDetailsService.loadUserByUsername(email);
-
-        String accessToken = jwtService.generateToken(userDetails);
-
-        return new LoginResponseDto(
-                accessToken,
-                "Bearer",
-                jwtExpiration
-        );
     }
 
     private String normalizeEmail(String email) {

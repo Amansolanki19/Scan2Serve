@@ -3,10 +3,9 @@ package com.example.scantoserve.serviceImplementation;
 
 import com.example.scantoserve.dto.LoginRequestDto;
 import com.example.scantoserve.dto.LoginResponseDto;
+import com.example.scantoserve.dto.RefreshTokenRequestDto;
 import com.example.scantoserve.service.AuthenticationService;
-import com.example.scantoserve.service.JwtService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -20,10 +19,7 @@ import java.util.Locale;
 public class AuthenticationServiceImpl implements AuthenticationService {
 
     private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-
-    @Value("${jwt.expiration}")
-    private Long expiration;
+    private final RefreshTokenService refreshTokenService;
 
     @Override
     public LoginResponseDto login(LoginRequestDto loginRequest) {
@@ -39,12 +35,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         );
 
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        String token = jwtService.generateToken(userDetails);
+        return refreshTokenService.issue(userDetails);
+    }
 
-        return new LoginResponseDto(
-                token,
-                "Bearer",
-                expiration
-        );
+    @Override
+    public LoginResponseDto refresh(RefreshTokenRequestDto request) {
+        return refreshTokenService.refresh(request.refreshToken());
     }
 }

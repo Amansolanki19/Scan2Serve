@@ -13,7 +13,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -26,8 +25,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserResponse registerUser(UserRegistrationRequest request) {
-        User user = userRepo.findByEmail(request.email()).orElse(null);
-
         if (userRepo.existsByEmail(request.email())) {
             throw  new DuplicateResourceException("Duplicate Email");
         }
@@ -55,14 +52,10 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<UserResponse> getAllUsers() {
-        List<User> users = userRepo.findAll();
-        ArrayList<UserResponse> userResponses = new ArrayList<>();
-
-        while (users.iterator().hasNext()){
-            userResponses.add(mapToUserResponse(users.iterator().next()));
-        }
-
-        return userResponses;
+        return userRepo.findAll()
+                .stream()
+                .map(this::mapToUserResponse)
+                .toList();
     }
 
     @Override
@@ -90,6 +83,7 @@ public class UserServiceImpl implements UserService {
                 .email(user.getEmail())
                 .mobileNumber(user.getMobileNumber())
                 .role(user.getRole())
+                .enabled(Boolean.TRUE.equals(user.getEnabled()))
                 .build();
 
         return response;
