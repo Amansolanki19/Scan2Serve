@@ -1,19 +1,15 @@
 package com.example.scantoserve.repository;
 
-import com.example.scantoserve.user.User;
-import org.springframework.data.mongodb.repository.MongoRepository;
-import org.springframework.data.mongodb.repository.Query;
+import com.example.scantoserve.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
-public interface UserRepo extends MongoRepository<User, String> {
+public interface UserRepo extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
-
-    @Query("{ 'mobileNumber' : ?0 }")
-    Optional<User> findByPhone(String phone);
-
-    boolean existsByEmail(String email);
-
-    @Query(value = "{ 'mobileNumber' : ?0 }", exists = true)
-    boolean existsByPhone(String phone);
+    Optional<User> findByMobileNumber(String mobileNumber);
+    Optional<User> findByEmailAndMobileNumber(String email, String mobileNumber);
+    Boolean existsByEmail(String email);
+    Boolean existsByMobileNumber(String mobileNumber);
+    Boolean existsByMobileNumberAndEmail(String mobileNumber, String email);
 }

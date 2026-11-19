@@ -1,7 +1,6 @@
 package com.example.scantoserve.exception;
 
 import com.example.scantoserve.common.ApiResponse;
-import com.mongodb.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -37,6 +36,14 @@ public class GlobalExceptionHandler  {
 
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(InvalidOtpException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidOtp(
+            InvalidOtpException ex) {
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Invalid or expired OTP", null));
     }
 
     @ExceptionHandler(TooManyRequestException.class)
@@ -76,6 +83,16 @@ public class GlobalExceptionHandler  {
                         "Invalid request body",
                         null
                 ));
+    }
+
+    @ExceptionHandler(
+            org.springframework.security.core.AuthenticationException.class
+    )
+    public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(
+            org.springframework.security.core.AuthenticationException ex) {
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Invalid email or password", null));
     }
 
     @ExceptionHandler(DuplicateKeyException.class)

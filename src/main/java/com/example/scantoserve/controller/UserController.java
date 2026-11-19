@@ -1,5 +1,6 @@
 package com.example.scantoserve.controller;
 
+import com.example.scantoserve.configuration.CustomUserDetails;
 import com.example.scantoserve.dto.UserRegistrationRequest;
 import com.example.scantoserve.dto.UserResponse;
 import com.example.scantoserve.service.UserService;
@@ -7,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -34,7 +36,7 @@ public class UserController {
     }
 
     @GetMapping("/id/{id}")
-    public ResponseEntity<UserResponse> getUser(@PathVariable String id){
+    public ResponseEntity<UserResponse> getUser(@PathVariable Long id){
         UserResponse userResponse = userService.getUserById(id);
         return ResponseEntity.ok(userResponse);
     }
@@ -43,6 +45,11 @@ public class UserController {
     public ResponseEntity<UserResponse> getUserByEmail(@RequestBody String email){
         UserResponse userResponse = userService.getUserByEmail(email);
         return ResponseEntity.ok(userResponse);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal CustomUserDetails customUserDetails){
+        return ResponseEntity.ok(userService.getUserByEmail(customUserDetails.getUsername()));
     }
 
 
